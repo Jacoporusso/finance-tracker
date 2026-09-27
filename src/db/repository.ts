@@ -19,6 +19,7 @@ const accountInputSchema = z.object({
   ownAccountAliases: z.array(z.string().trim().min(1)),
   currentBalanceCents: z.number().int().safe().optional(),
   currentBalanceAt: dateSchema.optional(),
+  balanceMode: z.enum(['snapshot', 'derived']).optional(),
 }).strict().superRefine((account, context) => {
   if (account.maskedIdentifier && looksLikeFullIban(account.maskedIdentifier)) {
     context.addIssue({ code: z.ZodIssueCode.custom, path: ['maskedIdentifier'], message: 'A full IBAN cannot be stored' });
@@ -171,6 +172,9 @@ export async function saveAccount(input: AccountInput, id?: string): Promise<str
     }
     if (account.currentBalanceCents !== undefined && account.currentBalanceAt === undefined) {
       throw new Error('A known balance requires its reference date');
+    }
+    if (account.balanceMode === 'derived' && (account.type === 'broker' || account.currentBalanceCents === undefined || account.currentBalanceAt === undefined)) {
+      throw new Error('Il saldo calcolato richiede un saldo di riferimento datato e non è disponibile per i conti investimento.');
     }
 
     await db.accounts.put(account);

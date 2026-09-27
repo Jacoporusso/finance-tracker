@@ -11,6 +11,7 @@ import type { Transaction } from '../domain/transactions';
 import DepositSetupPanel from '../transfers/DepositSetupPanel';
 import { hasUntrackedIngDeposit, getLegacyDepositTransferReviewCandidates } from '../transfers/deposit';
 import { liabilityProgress } from '../domain/mortgage-matching';
+import { accountBalance } from '../domain/balances';
 
 const GREEN = 'var(--app-chart-income)';
 
@@ -18,11 +19,16 @@ export default function DashboardPage() {
   const accounts = useLiveQuery(() => db.accounts.toArray(), []);
   const liabilities = useLiveQuery(() => db.liabilities.toArray(), []);
   const transactions = useLiveQuery(() => db.transactions.toArray(), []);
+  const valuations = useLiveQuery(() => db.investmentValuations.orderBy('date').toArray(), []);
   const categories = useLiveQuery(() => db.categories.toArray(), []);
   const legacyTransfers = useLiveQuery(getLegacyDepositTransferReviewCandidates, []);
   const [selectedMonth, setSelectedMonth] = useState('');
-  const loading = accounts === undefined || liabilities === undefined || transactions === undefined || categories === undefined;
-  const activeAccounts = (accounts ?? []).filter((account) => account.active);
+  const loading = accounts === undefined || liabilities === undefined || transactions === undefined || categories === undefined || valuations === undefined;
+  const activeAccounts = (accounts ?? []).filter((account) => account.active).map((account) => {
+    const balance = accountBalance(account, transactions ?? []);
+    const valuation = account.type === 'broker' ? (valuations ?? []).filter((item) => item.accountId === account.id).at(-1) : undefined;
+    return { ...account, currentBalanceCents: valuation?.valueCents ?? balance.amountCents, currentBalanceAt: valuation?.date ?? balance.asOf, balance };
+  });
   const unresolvedBalances = activeAccounts.filter((account) => account.currentBalanceCents === undefined);
   const depositMissing = hasUntrackedIngDeposit(accounts ?? [], transactions ?? []);
   const partialWealth = unresolvedBalances.length > 0 || depositMissing;
@@ -88,7 +94,7 @@ export default function DashboardPage() {
           </section>
 
           <section className="mt-5 rounded-2xl border border-line bg-surface p-4 sm:p-5" aria-labelledby="balance-dates">
-            <div className="flex flex-wrap items-center justify-between gap-2"><div><h2 id="balance-dates" className="text-lg font-semibold text-ink">Saldi dei conti attivi</h2><p className="mt-1 text-sm text-muted">I saldi possono riferirsi a date diverse.</p></div><Link to="/accounts" className="inline-flex min-h-11 items-center gap-1 rounded-lg px-3 text-sm font-semibold text-green hover:bg-green-soft">Gestisci conti <ArrowRightIcon className="size-4" aria-hidden="true" /></Link></div>
+            <div className="flex flex-wrap items-center justify-between gap-2"><div><h2 id="balance-dates" className="text-lg font-semibold text-ink">Saldi dei conti attivi</h2><p className="mt-1 text-sm text-muted">I saldi possono riferirsi a date diverse.</p></div><div className="flex flex-wrap gap-2"><Link to="/net-worth" className="inline-flex min-h-11 items-center gap-1 rounded-lg px-3 text-sm font-semibold text-green hover:bg-green-soft">Storico patrimonio <ArrowRightIcon className="size-4" aria-hidden="true" /></Link><Link to="/accounts" className="inline-flex min-h-11 items-center gap-1 rounded-lg px-3 text-sm font-semibold text-green hover:bg-green-soft">Gestisci conti <ArrowRightIcon className="size-4" aria-hidden="true" /></Link></div></div>
             {activeAccounts.length === 0 ? <p className="mt-3 text-sm text-muted">Nessun conto attivo. Aggiungi un conto per iniziare.</p> : <ul className="mt-3 divide-y divide-line">{activeAccounts.map((account) => <li key={account.id} className="flex min-w-0 flex-wrap items-center justify-between gap-x-4 gap-y-1 py-3"><span className="min-w-0 break-words text-sm font-medium text-ink">{account.name}</span><span className="ml-auto text-right"><span className="block text-sm font-semibold tabular-nums text-ink">{account.currentBalanceCents === undefined ? 'Saldo non indicato' : formatMoney(account.currentBalanceCents)}</span><span className="block text-sm text-muted">{account.currentBalanceAt ? `Al ${formatDate(account.currentBalanceAt)}` : 'Data saldo non indicata'}</span></span></li>)}</ul>}
           </section>
 

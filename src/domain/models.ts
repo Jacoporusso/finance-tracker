@@ -10,6 +10,7 @@ export interface Account {
   currency: 'EUR';
   currentBalanceCents?: number;
   currentBalanceAt?: string;
+  balanceMode?: 'snapshot' | 'derived';
   maskedIdentifier?: string;
   ownAccountAliases: string[];
   active: boolean;
@@ -18,7 +19,7 @@ export interface Account {
 }
 
 export type AccountInput = Pick<Account, 'name' | 'institution' | 'type' | 'currency' | 'ownAccountAliases'> &
-  Partial<Pick<Account, 'maskedIdentifier' | 'currentBalanceCents' | 'currentBalanceAt'>>;
+  Partial<Pick<Account, 'maskedIdentifier' | 'currentBalanceCents' | 'currentBalanceAt' | 'balanceMode'>>;
 
 export interface Category {
   id: string;

@@ -7,6 +7,7 @@ import { formatMoney, parseMoneyToCents } from '../domain/money';
 import { formatDate } from '../domain/display';
 import DatePicker from '../components/DatePicker';
 import { todayInRome } from '../domain/dates';
+import { accountBalance } from '../domain/balances';
 
 type Institution = AccountInput['institution'];
 type AccountKind = AccountInput['type'];
@@ -34,6 +35,7 @@ const blankForm = (): AccountForm => ({
   aliases: '',
   balance: '',
   balanceAt: '',
+  balanceMode: 'snapshot',
 });
 
 interface AccountForm {
@@ -44,6 +46,7 @@ interface AccountForm {
   aliases: string;
   balance: string;
   balanceAt: string;
+  balanceMode: 'snapshot' | 'derived';
 }
 
 function formFromAccount(account: Account): AccountForm {
@@ -57,6 +60,7 @@ function formFromAccount(account: Account): AccountForm {
       ? ''
       : new Intl.NumberFormat('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2, useGrouping: true }).format(account.currentBalanceCents / 100),
     balanceAt: account.currentBalanceAt ?? '',
+    balanceMode: account.balanceMode ?? 'snapshot',
   };
 }
 
@@ -71,6 +75,7 @@ export default function AccountsPage() {
       return { ...account, canDelete: transactionCount === 0 && batchCount === 0 };
     }));
   }, []);
+  const transactions = useLiveQuery(() => db.transactions.toArray(), []);
   const [editingAccount, setEditingAccount] = useState<Account | null>(null);
   const [form, setForm] = useState<AccountForm>(blankForm);
   const [formOpen, setFormOpen] = useState(false);
@@ -140,6 +145,7 @@ export default function AccountsPage() {
       ownAccountAliases: form.aliases.split(/\r?\n/).map((alias) => alias.trim()).filter(Boolean),
       currentBalanceCents,
       currentBalanceAt: currentBalanceCents === undefined ? undefined : balanceAt,
+      balanceMode: form.balanceMode,
     };
 
     setBusy(true);
@@ -245,6 +251,10 @@ export default function AccountsPage() {
               Data del saldo
               <DatePicker className="mt-1.5" label="Data del saldo" value={form.balanceAt} onChange={(balanceAt) => setForm({ ...form, balanceAt })} max={todayInRome()} />
             </label>
+            <label className="text-sm font-medium text-ink sm:col-span-2">Metodo aggiornamento
+              <select value={form.balanceMode} disabled={form.type === 'broker'} onChange={(event) => setForm({ ...form, balanceMode: event.target.value as AccountForm['balanceMode'] })} className="mt-1.5 min-h-11 w-full rounded-xl border border-line bg-canvas px-3 text-base text-ink"><option value="snapshot">Saldo registrato</option><option value="derived">Calcolato dai movimenti</option></select>
+              <span className="mt-1 block text-sm font-normal text-muted">Il saldo calcolato parte dal riferimento e usa i movimenti contabilizzati successivi.</span>
+            </label>
             <label className="text-sm font-medium text-ink sm:col-span-2">
               Alias dei tuoi conti
               <textarea rows={3} value={form.aliases} onChange={(event) => setForm({ ...form, aliases: event.target.value })} className="mt-1.5 w-full rounded-xl border border-line bg-canvas px-3 py-2.5 text-base text-ink outline-none focus:border-green focus:ring-2 focus:ring-green/20" placeholder={'Un alias per riga, ad esempio:\nConto deposito personale'} aria-describedby="alias-help" />
@@ -282,7 +292,7 @@ export default function AccountsPage() {
                 </div>
                 {account.maskedIdentifier && <p className="mt-3 text-sm text-muted">{account.maskedIdentifier}</p>}
                 <div className="mt-4 border-t border-line pt-3">
-                  <p className="text-sm text-muted">Saldo {account.currentBalanceCents === undefined ? 'non indicato' : formatMoney(account.currentBalanceCents)}</p>
+                  {(() => { const balance = accountBalance(account, transactions ?? []); return <><p className="text-sm text-muted">Saldo {balance.amountCents === undefined ? 'non indicato' : formatMoney(balance.amountCents)}</p><p className="mt-1 text-xs text-muted">{balance.mode === 'derived' ? `Calcolato dai movimenti${balance.movementCount ? ` · ${balance.movementCount} contabilizzati` : ''}` : 'Saldo registrato'}{balance.stale ? ' · da verificare' : ''}</p></>; })()}
                   {account.currentBalanceAt && <p className="mt-1 text-sm text-muted">Aggiornato il {formatDate(account.currentBalanceAt)}</p>}
                   {account.ownAccountAliases.length > 0 && <p className="mt-2 break-words text-sm text-muted">Alias: {account.ownAccountAliases.join(', ')}</p>}
                 </div>

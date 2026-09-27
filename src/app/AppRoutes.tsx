@@ -6,12 +6,13 @@ import GraphsPage from '../pages/GraphsPage';
 import AccountsPage from '../pages/AccountsPage';
 import CategoriesPage from '../pages/CategoriesPage';
 import SettingsPage from '../pages/SettingsPage';
-import PlaceholderPage from '../pages/PlaceholderPage';
 import ImportPage from '../pages/ImportPage';
 import TransactionsPage from '../pages/TransactionsPage';
 import LiabilitiesPage from '../pages/LiabilitiesPage';
 import LiabilityDetailPage from '../pages/LiabilityDetailPage';
 import ReviewPage from '../pages/ReviewPage';
+import NetWorthHistoryPage from '../pages/NetWorthHistoryPage';
+import InvestmentsPage from '../pages/InvestmentsPage';
 import ImportHistory from '../import/ImportHistory';
 
 export default function AppRoutes() {
@@ -28,9 +29,10 @@ export default function AppRoutes() {
     <Route path="import" element={<ImportPage />} />
     <Route path="import/history" element={<section><h1 className="text-2xl font-bold">Importazioni</h1><ImportHistory /></section>} />
     <Route path="transactions" element={<TransactionsPage />} />
-    <Route path="investments" element={<PlaceholderPage title="Investimenti" description="Trade Republic e la gestione dei titoli sono rimandati. Puoi includere un saldo investimenti manuale dalla pagina Conti." />} />
+    <Route path="investments" element={<InvestmentsPage />} />
     <Route path="liabilities" element={<LiabilitiesPage />} />
     <Route path="liabilities/:liabilityId" element={<LiabilityDetailPage />} />
+    <Route path="net-worth" element={<NetWorthHistoryPage />} />
     <Route path="review" element={<ReviewPage />} />
     <Route path="*" element={<section><h1 className="text-2xl font-bold">Pagina non trovata</h1><Link to="/" className="mt-4 inline-flex min-h-11 items-center text-green">Torna alla dashboard</Link></section>} />
   </Route></Routes>;

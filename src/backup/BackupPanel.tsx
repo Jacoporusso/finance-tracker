@@ -19,6 +19,8 @@ const storeLabels: Record<keyof BackupRestorePreview['recordCounts'], string> = 
   importBatches: 'Importazioni',
   importBatchRows: 'Storico import',
   liabilities: 'Passività',
+  netWorthSnapshots: 'Storico patrimonio',
+  investmentValuations: 'Valorizzazioni investimenti',
 };
 
 export default function BackupPanel() {

@@ -6,6 +6,8 @@ import type { AppSetting } from '../db/database';
 import { formatDate } from '../domain/display';
 import { formatMoney } from '../domain/money';
 import { mortgageSchema } from '../domain/mortgage-validation';
+import type { NetWorthSnapshot } from '../domain/net-worth';
+import type { InvestmentValuation } from '../domain/investments';
 
 const BACKUP_FORMAT = 'finance-tracker-backup';
 const BACKUP_VERSION = 1;
@@ -26,6 +28,7 @@ const accountSchema = z.object({
   currency: z.literal('EUR'),
   currentBalanceCents: safeCentsSchema.optional(),
   currentBalanceAt: isoDateSchema.optional(),
+  balanceMode: z.enum(['snapshot', 'derived']).optional(),
   maskedIdentifier: z.string().optional(),
   ownAccountAliases: z.array(z.string()),
   active: z.boolean(),
@@ -143,6 +146,8 @@ const liabilitySchema = z.object({
   updatedAt: isoTimestampSchema,
   mortgage: mortgageSchema.optional(),
 }).passthrough();
+const netWorthSnapshotSchema = z.object({ id: z.string().min(1), date: isoDateSchema, cashCents: safeCentsSchema, investmentsCents: safeCentsSchema, liabilitiesCents: safeCentsSchema, netWorthCents: safeCentsSchema, source: z.enum(['manual', 'import', 'derived']), completeness: z.enum(['complete', 'partial']), createdAt: isoTimestampSchema }).passthrough();
+const investmentValuationSchema = z.object({ id: z.string().min(1), accountId: z.string().min(1), date: isoDateSchema, valueCents: safeCentsSchema, source: z.enum(['manual', 'import']), note: z.string().optional(), createdAt: isoTimestampSchema }).passthrough();
 
 const settingSchema = z.object({ key: z.string().min(1), value: z.unknown(), updatedAt: isoTimestampSchema }).passthrough();
 
@@ -156,6 +161,8 @@ const snapshotSchema = z.object({
   importBatches: z.array(importBatchSchema),
   importBatchRows: z.array(importBatchRowSchema),
   liabilities: z.array(liabilitySchema),
+  netWorthSnapshots: z.array(netWorthSnapshotSchema).default([]),
+  investmentValuations: z.array(investmentValuationSchema).default([]),
 });
 
 interface BackupSnapshot {
@@ -168,8 +175,10 @@ interface BackupSnapshot {
   importBatches: ImportBatch[];
   importBatchRows: ImportBatchRow[];
   liabilities: Liability[];
+  netWorthSnapshots: NetWorthSnapshot[];
+  investmentValuations: InvestmentValuation[];
 }
-type StoreName = 'settings' | 'accounts' | 'categories' | 'transactions' | 'importBatches' | 'importBatchRows' | 'liabilities';
+type StoreName = 'settings' | 'accounts' | 'categories' | 'transactions' | 'importBatches' | 'importBatchRows' | 'liabilities' | 'netWorthSnapshots' | 'investmentValuations';
 type BackupRecord = object;
 type ConflictStrategy = 'keep-local' | 'use-backup';
 
@@ -223,10 +232,10 @@ async function deriveKey(password: string, salt: Uint8Array, iterations: number)
 
 async function readSnapshot(): Promise<BackupSnapshot> {
   await db.open();
-  return db.transaction('r', [db.settings, db.accounts, db.categories, db.transactions, db.importBatches, db.importBatchRows, db.liabilities], async () => {
-    const [settings, accounts, categories, transactions, importBatches, importBatchRows, liabilities] = await Promise.all([
+  return db.transaction('r', [db.settings, db.accounts, db.categories, db.transactions, db.importBatches, db.importBatchRows, db.liabilities, db.netWorthSnapshots, db.investmentValuations], async () => {
+    const [settings, accounts, categories, transactions, importBatches, importBatchRows, liabilities, netWorthSnapshots, investmentValuations] = await Promise.all([
       db.settings.toArray(), db.accounts.toArray(), db.categories.toArray(), db.transactions.toArray(),
-      db.importBatches.toArray(), db.importBatchRows.toArray(), db.liabilities.toArray(),
+      db.importBatches.toArray(), db.importBatchRows.toArray(), db.liabilities.toArray(), db.netWorthSnapshots.toArray(), db.investmentValuations.toArray(),
     ]);
     return {
       schemaVersion: 1 as const,
@@ -238,6 +247,8 @@ async function readSnapshot(): Promise<BackupSnapshot> {
       importBatches,
       importBatchRows,
       liabilities,
+      netWorthSnapshots,
+      investmentValuations,
     };
   });
 }
@@ -281,6 +292,8 @@ function recordsByStore(snapshot: BackupSnapshot): Record<StoreName, BackupRecor
     importBatches: snapshot.importBatches as unknown as BackupRecord[],
     importBatchRows: snapshot.importBatchRows as unknown as BackupRecord[],
     liabilities: snapshot.liabilities as unknown as BackupRecord[],
+    netWorthSnapshots: snapshot.netWorthSnapshots as unknown as BackupRecord[],
+    investmentValuations: snapshot.investmentValuations as unknown as BackupRecord[],
   };
 }
 
@@ -298,6 +311,7 @@ async function validateReferences(snapshot: BackupSnapshot): Promise<void> {
   if (snapshot.liabilities.some((row) => row.mortgage?.accountId && !accountIds.has(row.mortgage.accountId))) {
     throw new Error('Il piano contiene un conto di addebito mancante nel backup.');
   }
+  if (snapshot.investmentValuations.some((row) => !accountIds.has(row.accountId))) throw new BackupRestoreError('Una valorizzazione investimento è collegata a un conto mancante.');
   const categoryIds = new Set(snapshot.categories.map((row) => row.id));
   const batchIds = new Set(snapshot.importBatches.map((row) => row.id));
   const transactionIds = new Set(snapshot.transactions.map((row) => row.id));
@@ -499,17 +513,17 @@ export async function applyBackupRestore(
   if (!plan) throw new BackupRestoreError('Anteprima scaduta. Riapri il file di backup e ricontrolla i dati.');
   const { snapshot, localAtPreview } = plan;
 
-  return db.transaction('rw', [db.settings, db.accounts, db.categories, db.transactions, db.importBatches, db.importBatchRows, db.liabilities], async () => {
+  return db.transaction('rw', [db.settings, db.accounts, db.categories, db.transactions, db.importBatches, db.importBatchRows, db.liabilities, db.netWorthSnapshots, db.investmentValuations], async () => {
     await validateReferences(snapshot);
     const incomingByStore = recordsByStore(snapshot);
     const current = await Promise.all([
       db.settings.toArray(), db.accounts.toArray(), db.categories.toArray(), db.transactions.toArray(),
-      db.importBatches.toArray(), db.importBatchRows.toArray(), db.liabilities.toArray(),
+      db.importBatches.toArray(), db.importBatchRows.toArray(), db.liabilities.toArray(), db.netWorthSnapshots.toArray(), db.investmentValuations.toArray(),
     ]);
     const currentByStore: Record<StoreName, BackupRecord[]> = {
       settings: current[0] as unknown as BackupRecord[], accounts: current[1] as unknown as BackupRecord[], categories: current[2] as unknown as BackupRecord[],
       transactions: current[3] as unknown as BackupRecord[], importBatches: current[4] as unknown as BackupRecord[],
-      importBatchRows: current[5] as unknown as BackupRecord[], liabilities: current[6] as unknown as BackupRecord[],
+      importBatchRows: current[5] as unknown as BackupRecord[], liabilities: current[6] as unknown as BackupRecord[], netWorthSnapshots: current[7] as unknown as BackupRecord[], investmentValuations: current[8] as unknown as BackupRecord[],
     };
     const currentSnapshot: BackupSnapshot = {
       schemaVersion: 1,
@@ -521,6 +535,8 @@ export async function applyBackupRestore(
       importBatches: current[4] as ImportBatch[],
       importBatchRows: current[5] as ImportBatchRow[],
       liabilities: current[6] as Liability[],
+      netWorthSnapshots: current[7] as NetWorthSnapshot[],
+      investmentValuations: current[8] as InvestmentValuation[],
     };
     assertNoIndependentOverlap(snapshot, currentSnapshot);
     const previewByStore = recordsByStore(localAtPreview);
@@ -562,9 +578,17 @@ export async function applyBackupRestore(
       } else if (store === 'importBatchRows') {
         const typed = row as ImportBatchRow;
         if (operation === 'add') await db.importBatchRows.add(typed); else await db.importBatchRows.put(typed);
-      } else {
+      } else if (store === 'liabilities') {
         const typed = row as Liability;
         if (operation === 'add') await db.liabilities.add(typed); else await db.liabilities.put(typed);
+      } else {
+        if (store === 'netWorthSnapshots') {
+          const typed = row as NetWorthSnapshot;
+          if (operation === 'add') await db.netWorthSnapshots.add(typed); else await db.netWorthSnapshots.put(typed);
+        } else {
+          const typed = row as InvestmentValuation;
+          if (operation === 'add') await db.investmentValuations.add(typed); else await db.investmentValuations.put(typed);
+        }
       }
     };
     for (const store of Object.keys(incomingByStore) as StoreName[]) {
