@@ -10,7 +10,7 @@ import { todayInRome } from '../domain/dates';
 import type { Transaction } from '../domain/transactions';
 import DepositSetupPanel from '../transfers/DepositSetupPanel';
 import { hasUntrackedIngDeposit, getLegacyDepositTransferReviewCandidates } from '../transfers/deposit';
-import { matchMortgageInstallments, mortgageProgress } from '../domain/mortgage-matching';
+import { liabilityProgress } from '../domain/mortgage-matching';
 
 const GREEN = 'var(--app-chart-income)';
 
@@ -28,9 +28,7 @@ export default function DashboardPage() {
   const partialWealth = unresolvedBalances.length > 0 || depositMissing;
   const knownAssetsCents = activeAccounts.reduce((total, account) => total + (account.currentBalanceCents ?? 0), 0);
   const liabilitiesCents = (liabilities ?? []).reduce((total, liability) => {
-    const matches = liability.mortgage ? matchMortgageInstallments(liability.mortgage, transactions ?? []) : [];
-    const updated = (liability.mortgage ? mortgageProgress(liability.mortgage, matches).current?.residualCents : undefined) ?? liability.amountCents;
-    return total + updated;
+    return total + liabilityProgress(liability, transactions ?? []).residualCents;
   }, 0);
   const netWorthCents = knownAssetsCents - liabilitiesCents;
   const cashTypes = new Set(['checking', 'savings', 'cash']);

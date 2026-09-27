@@ -179,7 +179,10 @@ export async function saveAccount(input: AccountInput, id?: string): Promise<str
 }
 
 export async function deleteEmptyAccount(id: string): Promise<void> {
-  await db.transaction('rw', db.accounts, db.transactions, db.importBatches, db.importBatchRows, async () => {
+  await db.transaction('rw', [db.accounts, db.transactions, db.importBatches, db.importBatchRows, db.liabilities], async () => {
+    if ((await db.liabilities.toArray()).some((liability) => liability.mortgage?.accountId === id)) {
+      throw new Error('Il conto è collegato a una passività. Modifica prima il conto di addebito del finanziamento.');
+    }
     const account = await db.accounts.get(id);
     if (!account) throw new Error('Il conto non è più disponibile. Aggiorna la pagina e riprova.');
 

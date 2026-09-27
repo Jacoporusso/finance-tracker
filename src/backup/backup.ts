@@ -5,6 +5,7 @@ import type { ImportBatch, ImportBatchRow, Liability, Transaction } from '../dom
 import type { AppSetting } from '../db/database';
 import { formatDate } from '../domain/display';
 import { formatMoney } from '../domain/money';
+import { mortgageSchema } from '../domain/mortgage-validation';
 
 const BACKUP_FORMAT = 'finance-tracker-backup';
 const BACKUP_VERSION = 1;
@@ -140,6 +141,7 @@ const liabilitySchema = z.object({
   amountCents: safeCentsSchema,
   asOf: isoDateSchema,
   updatedAt: isoTimestampSchema,
+  mortgage: mortgageSchema.optional(),
 }).passthrough();
 
 const settingSchema = z.object({ key: z.string().min(1), value: z.unknown(), updatedAt: isoTimestampSchema }).passthrough();
@@ -293,6 +295,9 @@ function safeConflictLabel(store: StoreName, row: BackupRecord): string {
 
 async function validateReferences(snapshot: BackupSnapshot): Promise<void> {
   const accountIds = new Set(snapshot.accounts.map((row) => row.id));
+  if (snapshot.liabilities.some((row) => row.mortgage?.accountId && !accountIds.has(row.mortgage.accountId))) {
+    throw new Error('Il piano contiene un conto di addebito mancante nel backup.');
+  }
   const categoryIds = new Set(snapshot.categories.map((row) => row.id));
   const batchIds = new Set(snapshot.importBatches.map((row) => row.id));
   const transactionIds = new Set(snapshot.transactions.map((row) => row.id));

@@ -98,9 +98,14 @@ export interface MortgageInstallment {
   interestCents: number;
   installmentCents: number;
   residualCents: number;
+  otherCents?: number;
 }
 
 export interface MortgageDetails {
+  contractNumber?: string;
+  accountId?: string;
+  warnings?: string[];
+  parserVersion?: number;
   originalAmountCents?: number;
   debtResidualCents?: number;
   accountLabel?: string;
