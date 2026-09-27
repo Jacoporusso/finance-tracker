@@ -31,6 +31,8 @@ Prima di modificare codice leggere integralmente:
 ## Stack
 
 - React
+- Tailwind CSS 4 (utility e variabili CSS native, senza Sass)
+- Heroicons e Tailwind Typography
 - TypeScript strict
 - Vite
 - Dexie
@@ -190,16 +192,18 @@ No UI da trading.
 
 ## Test gates
 
-Prima di chiudere milestone:
+Indicazioni aggiornate dell'utente: non creare né eseguire unit test. Non eseguire mai comandi di build; se necessaria, chiedere all'utente di eseguirla e fornire l'output. Non avviare workflow di build da remoto.
+
+Controlli consentiti prima di chiudere milestone:
 
 ```bash
 npm run typecheck
 npm run lint
-npm run test
-npm run build
 ```
 
-Per milestone UI eseguire anche viewport E2E.
+Per milestone UI verificare i viewport sul server di sviluppo, senza produrre una build. Segnalare eventuali verifiche non eseguite.
+Le acceptance di correttezza restano requisiti: verificarle con scenari manuali/sintetici, senza unit test.
+Lavorare con un piccolo team di subagent a basso costo, con integrazione e revisione dell'agente principale.
 
 ## Workflow
 
