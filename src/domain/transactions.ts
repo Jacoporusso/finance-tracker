@@ -87,4 +87,23 @@ export interface Liability {
   amountCents: number;
   asOf: string;
   updatedAt: string;
+  mortgage?: MortgageDetails;
+}
+
+export interface MortgageInstallment {
+  number: number;
+  dueDate: string;
+  status: 'paid' | 'due' | 'other';
+  principalCents: number;
+  interestCents: number;
+  installmentCents: number;
+  residualCents: number;
+}
+
+export interface MortgageDetails {
+  originalAmountCents?: number;
+  debtResidualCents?: number;
+  accountLabel?: string;
+  scheduleFileName: string;
+  installments: MortgageInstallment[];
 }

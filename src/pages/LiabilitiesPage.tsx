@@ -1,12 +1,16 @@
 import { useState, type FormEvent } from 'react';
+import { Link } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/database';
 import type { Liability } from '../domain/transactions';
+import type { MortgageDetails } from '../domain/transactions';
 import { formatMoney, parseMoneyToCents } from '../domain/money';
 import { formatDate } from '../domain/display';
 import DatePicker from '../components/DatePicker';
 import { todayInRome } from '../domain/dates';
 import PageHeader from '../components/PageHeader';
+import { parseMortgagePlan } from '../domain/mortgage-plan';
+import { matchMortgageInstallments } from '../domain/mortgage-matching';
 
 interface LiabilityForm {
   name: string;
@@ -18,15 +22,18 @@ const emptyForm = (): LiabilityForm => ({ name: '', amount: '', asOf: todayInRom
 
 export default function LiabilitiesPage() {
   const liabilities = useLiveQuery(() => db.liabilities.toArray(), []);
+  const transactions = useLiveQuery(() => db.transactions.toArray(), []);
   const [form, setForm] = useState<LiabilityForm>(emptyForm);
   const [editing, setEditing] = useState<Liability | null>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [mortgagePlan, setMortgagePlan] = useState<MortgageDetails | undefined>();
 
   function beginEdit(liability: Liability) {
     setEditing(liability);
     setForm({ name: liability.name, amount: new Intl.NumberFormat('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2, useGrouping: true }).format(liability.amountCents / 100), asOf: liability.asOf });
     setError('');
+    setMortgagePlan(liability.mortgage);
   }
 
   function cancelEdit() {
@@ -34,6 +41,7 @@ export default function LiabilitiesPage() {
     setEditing(null);
     setForm(emptyForm());
     setError('');
+    setMortgagePlan(undefined);
   }
 
   async function save(event: FormEvent<HTMLFormElement>) {
@@ -58,6 +66,7 @@ export default function LiabilitiesPage() {
       amountCents,
       asOf: form.asOf,
       updatedAt: new Date().toISOString(),
+      mortgage: mortgagePlan,
     };
     try {
       await db.liabilities.put(liability);
@@ -106,6 +115,10 @@ export default function LiabilitiesPage() {
             <DatePicker className="mt-1.5" required label="Data aggiornamento" max={todayInRome()} value={form.asOf} onChange={(asOf) => setForm({ ...form, asOf })} />
           </label>
         </fieldset>
+        <div className="mt-4 rounded-xl border border-dashed border-line p-3">
+          <label className="block text-sm font-medium text-ink">Piano di ammortamento Excel <input type="file" accept=".xlsx,.xls" disabled={busy} onChange={(event) => { const file = event.target.files?.[0]; if (!file) return; setError(''); void parseMortgagePlan(file).then(setMortgagePlan).catch((reason: unknown) => setError(reason instanceof Error ? reason.message : 'Piano Excel non riconosciuto.')); }} className="mt-2 block min-h-11 w-full text-sm text-muted file:mr-3 file:rounded-lg file:border-0 file:bg-green-soft file:px-3 file:py-2 file:font-semibold file:text-green" /></label>
+          <p className="mt-2 text-xs text-muted">Il file resta sul dispositivo. {mortgagePlan ? `${mortgagePlan.installments.length} rate lette · ${mortgagePlan.scheduleFileName}` : 'Puoi aggiungerlo ora o in un secondo momento.'}</p>
+        </div>
         {error && <p role="alert" className="mt-3 rounded-xl border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-800">{error}</p>}
         <div className="mt-4 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
           {editing && <button type="button" disabled={busy} onClick={cancelEdit} className="min-h-11 rounded-xl border border-line px-4 py-2 text-sm font-semibold text-ink disabled:opacity-60">Annulla</button>}
@@ -125,12 +138,15 @@ export default function LiabilitiesPage() {
               <li key={liability.id} className="min-w-0 rounded-2xl border border-line bg-surface p-4 sm:p-5">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0"><h3 className="break-words text-base font-semibold text-ink">{liability.name}</h3><p className="mt-1 text-sm text-muted">Aggiornato al {formatDate(liability.asOf)}</p></div>
-                  <p className="shrink-0 text-lg font-semibold tabular-nums text-ink">{formatMoney(-liability.amountCents)}</p>
+                  <p className="shrink-0 text-lg font-semibold tabular-nums text-ink">{formatMoney(-(liability.mortgage ? (matchMortgageInstallments(liability.mortgage, transactions ?? []).at(-1)?.installment.residualCents ?? liability.amountCents) : liability.amountCents))}</p>
                 </div>
                 <div className="mt-3 flex flex-wrap gap-2">
+                  <Link to={`/liabilities/${liability.id}`} className="inline-flex min-h-11 items-center rounded-lg bg-green px-3 text-sm font-semibold text-on-green">Apri dettaglio</Link>
                   <button type="button" disabled={busy} onClick={() => beginEdit(liability)} className="min-h-11 rounded-lg border border-line px-3 text-sm font-semibold text-ink disabled:opacity-60">Modifica</button>
                   <button type="button" disabled={busy} onClick={() => void remove(liability)} className="min-h-11 rounded-lg px-3 text-sm font-semibold text-muted hover:bg-canvas disabled:opacity-60">Elimina</button>
                 </div>
+                {liability.mortgage && (() => { const matches = matchMortgageInstallments(liability.mortgage, transactions ?? []); const latest = matches.at(-1)?.installment; return <p className="mt-3 rounded-lg bg-green-soft px-3 py-2 text-sm text-green">Piano collegato: {liability.mortgage.installments.length} rate · {matches.length} riconosciute{latest ? ` · residuo dopo l’ultima rata ${formatMoney(-latest.residualCents)}` : ''}</p>; })()}
+                {liability.mortgage && (() => { const matches = matchMortgageInstallments(liability.mortgage, transactions ?? []); const paid = matches.length; const next = liability.mortgage.installments.find((rate) => !matches.some((item) => item.installment.number === rate.number) && rate.status === 'due'); return <details className="mt-3 rounded-lg border border-line p-3"><summary className="min-h-11 cursor-pointer py-2 text-sm font-semibold">Dettaglio piano</summary><dl className="grid gap-2 pt-2 text-sm sm:grid-cols-2"><div><dt className="text-muted">Rate riconosciute</dt><dd className="font-semibold">{paid} / {liability.mortgage.installments.length}</dd></div><div><dt className="text-muted">Rate residue</dt><dd className="font-semibold">{Math.max(0, liability.mortgage.installments.length - paid)}</dd></div><div><dt className="text-muted">Prossima rata</dt><dd className="font-semibold">{next ? `${formatDate(next.dueDate)} · ${formatMoney(-next.installmentCents)}` : 'Nessuna'}</dd></div><div><dt className="text-muted">Quota interessi prossima rata</dt><dd className="font-semibold">{next ? formatMoney(-next.interestCents) : '—'}</dd></div></dl></details>; })()}
               </li>
             ))}
           </ul>

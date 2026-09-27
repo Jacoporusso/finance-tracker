@@ -10,6 +10,7 @@ import PlaceholderPage from '../pages/PlaceholderPage';
 import ImportPage from '../pages/ImportPage';
 import TransactionsPage from '../pages/TransactionsPage';
 import LiabilitiesPage from '../pages/LiabilitiesPage';
+import LiabilityDetailPage from '../pages/LiabilityDetailPage';
 import ReviewPage from '../pages/ReviewPage';
 import ImportHistory from '../import/ImportHistory';
 
@@ -29,6 +30,7 @@ export default function AppRoutes() {
     <Route path="transactions" element={<TransactionsPage />} />
     <Route path="investments" element={<PlaceholderPage title="Investimenti" description="Trade Republic e la gestione dei titoli sono rimandati. Puoi includere un saldo investimenti manuale dalla pagina Conti." />} />
     <Route path="liabilities" element={<LiabilitiesPage />} />
+    <Route path="liabilities/:liabilityId" element={<LiabilityDetailPage />} />
     <Route path="review" element={<ReviewPage />} />
     <Route path="*" element={<section><h1 className="text-2xl font-bold">Pagina non trovata</h1><Link to="/" className="mt-4 inline-flex min-h-11 items-center text-green">Torna alla dashboard</Link></section>} />
   </Route></Routes>;
